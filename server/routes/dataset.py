@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from sqlalchemy import desc
 from ..config import db
 from server.middleware.auth import required_auth
 from server.schema import dataset
@@ -11,6 +12,21 @@ dataset_bp = Blueprint("dataset", __name__)
 def upload_data():
     try:
         data = request.get_json()
+
+        current_student_id = dataset.Dataset.query.filter_by(
+            student_id=data["studentId"]
+        ).first()
+
+        if current_student_id is not None:
+            return (
+                jsonify(
+                    {
+                        "title": "Student Id Already Exists!",
+                        "message": "The data you are trying to upload already exists. Please check the student id and try again.",
+                    }
+                ),
+                400,
+            )
 
         data_features = dataset.Dataset()
 
@@ -56,7 +72,9 @@ def get_dataset():
         page = request.args.get("page", 1, type=int)
         limit = request.args.get("limit", 10, type=int)
 
-        paginated_dataset = dataset.Dataset.query.paginate(page=page, per_page=limit)
+        paginated_dataset = dataset.Dataset.query.order_by(desc(dataset.Dataset.data_id)).paginate(
+            page=page, per_page=limit
+        )
 
         total_items = paginated_dataset.total
         dataset_result = paginated_dataset.items
@@ -75,4 +93,7 @@ def get_dataset():
 
         return jsonify({"total_items": total_items, "datasets": datasets}), 200
     except Exception as e:
-        return jsonify({"message": "Something went wrong when getting the datasets"})
+        return (
+            jsonify({"message": "Something went wrong when getting the datasets"}),
+            500,
+        )

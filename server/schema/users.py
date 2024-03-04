@@ -1,5 +1,5 @@
+from datetime import datetime
 from ..config import db, bcrypt
-import time
 import uuid
 
 class User(db.Model):
@@ -10,7 +10,7 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     verified = db.Column(db.Boolean, default=False)
     password = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.Integer, default=int(time.time()))
+    created_at = db.Column(db.DateTime, default=datetime.now)
     predictions = db.relationship('Prediction', backref='user')
 
     def __init__(self, username, email,  password):
@@ -23,6 +23,7 @@ class User(db.Model):
 
     def authenticate(self, password):
         return bcrypt.check_password_hash(self.password, password)
+        
 
     def __repr__(self):
         return '<User %r>' % self.username

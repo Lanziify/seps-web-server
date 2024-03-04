@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from sqlalchemy import desc
 from ..config import db
 from ..schema import predictions, dataset, users, classifications
 from ..model.bagged_tree import model
@@ -14,6 +15,7 @@ predict_bp = Blueprint("predict", __name__)
 def predict():
     try:
         request_input = request.get_json()
+
         auth_header = request.headers.get("Authorization")
 
         already_predicted = predictions.Prediction.query.filter_by(
@@ -21,7 +23,7 @@ def predict():
         ).first()
 
         if already_predicted:
-            return jsonify({"message": "Dataset already predicted!"}), 404
+            return jsonify({"message": "Dataset already predicted!"}), 400
 
         data = dataset.Dataset.query.filter_by(
             data_id=request_input["datasetId"]
@@ -100,7 +102,7 @@ def get_predictions():
         page = request.args.get("page", 1, type=int)
         limit = request.args.get("limit", 10, type=int)
 
-        paginated_predictions = predictions.Prediction.query.paginate(
+        paginated_predictions = predictions.Prediction.query.order_by(desc(predictions.Prediction.prediction_id)).paginate(
             page=page, per_page=limit
         )
 
@@ -115,7 +117,7 @@ def get_predictions():
                 "dataset_id": prediction_item.data_id,
                 "predicted_by": prediction_item.user.username,
                 "email": prediction_item.user.email,
-                "prediction_time": prediction_item.prediction_time,
+                "prediction_time": prediction_item.prediction_time.strftime('%Y-%m-%d %H:%M:%S'),
             }
             prediction_items.append(prediction_dict)
 
@@ -125,4 +127,4 @@ def get_predictions():
         )
 
     except Exception as e:
-        return jsonify({"message": "Something went wrong when getting the datasets"})
+        return jsonify({"message": "Something went wrong when getting the datasets"}), 500

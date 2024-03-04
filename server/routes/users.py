@@ -52,30 +52,6 @@ def get_user():
         return jsonify({"message": str(e)}), 500
 
 
-@user_bp.route("/user/details", methods=["GET"])
-@required_auth
-def get_user_details():
-    auth_header = request.headers.get("Authorization")
-    token = decodeToken(auth_header)
-    user_id = token.get("user_id")
-    user = User.query.filter_by(user_id=user_id).first()
-    if user:
-        return (
-            jsonify(
-                {
-                    "user": {
-                        "user_id": user.user_id,
-                        "username": user.username,
-                        "created_at": user.created_at,
-                    }
-                }
-            ),
-            200,
-        )
-    else:
-        return jsonify({"message": "User not found"}), 404
-
-
 # get the data from the request body
 # check empty fields
 # store credentials
@@ -88,6 +64,7 @@ def get_user_details():
 def register_user():
     try:
         data = request.get_json()
+
 
         user = User.query.filter_by(email=data["email"]).first()
 
@@ -129,7 +106,7 @@ def register_user():
         )
 
     except Exception as e:
-        print(e)
+        db.session.rollback()
         return jsonify({"message": "Oops! Something went wrong"}), 400
 
 
@@ -170,14 +147,14 @@ def login_user():
             "username": user.username,
             "email": user.email,
             "verified": user.verified,
-            "create_at": user.created_at,
+            "create_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             "exp": datetime.utcnow() + timedelta(hours=1),
         }
         refresh_token_payload = {
             "user_id": user.user_id,
             "username": user.username,
             "email": user.email,
-            "create_at": user.created_at,
+            "create_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             "verified": user.verified,
         }
 
@@ -215,7 +192,7 @@ def new_access_token():
         "username": user.username,
         "email": user.email,
         "verified": user.verified,
-        "create_at": user.created_at,
+        "create_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
         "exp": datetime.utcnow() + timedelta(hours=1),
     }
 
