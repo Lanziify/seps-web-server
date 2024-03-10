@@ -14,7 +14,7 @@ class Dataset(db.Model):
     ability_to_present_ideas = db.Column(db.Integer, nullable=False)
     communication_skills = db.Column(db.Integer, nullable=False)
     performance_rating = db.Column(db.Integer, nullable=False)
-    uploaded_at = db.Column(db.DateTime, default=datetime.now)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     already_predicted = db.Column(db.Boolean, nullable=False, default=False)
     prediction_details = db.relationship(
         "Prediction", uselist=False, back_populates="data_inputs"

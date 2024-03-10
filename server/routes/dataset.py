@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required
 from sqlalchemy import desc
 from ..config import db
 from server.middleware.auth import required_auth
@@ -67,14 +68,15 @@ def upload_data():
 
 
 @dataset_bp.route("/dataset", methods=["GET"])
+@jwt_required()
 def get_dataset():
     try:
         page = request.args.get("page", 1, type=int)
         limit = request.args.get("limit", 10, type=int)
 
-        paginated_dataset = dataset.Dataset.query.order_by(desc(dataset.Dataset.data_id)).paginate(
-            page=page, per_page=limit
-        )
+        paginated_dataset = dataset.Dataset.query.order_by(
+            desc(dataset.Dataset.data_id)
+        ).paginate(page=page, per_page=limit)
 
         total_items = paginated_dataset.total
         dataset_result = paginated_dataset.items

@@ -11,7 +11,7 @@ class Prediction(db.Model):
         db.Integer, db.ForeignKey("class.class_id"), nullable=False
     )
     user_id = db.Column(db.String(36), db.ForeignKey("users.user_id"), nullable=False)
-    prediction_time = db.Column(db.DateTime, default=datetime.now)
+    prediction_time = db.Column(db.DateTime, default=datetime.utcnow)
     classification = db.relationship(
         "Classification", back_populates="prediction_details"
     )

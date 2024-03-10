@@ -1,22 +1,19 @@
 from flask import Blueprint, request, jsonify
+from flask_jwt_extended import current_user, jwt_required
 from sqlalchemy import desc
 from ..config import db
-from ..schema import predictions, dataset, users, classifications
+from ..schema import predictions, dataset, classifications
 from ..model.bagged_tree import model
-from ..middleware.auth import required_auth
-from ..utils.tokenUtils import decodeToken
 from datetime import datetime
 
 predict_bp = Blueprint("predict", __name__)
 
 
 @predict_bp.route("/model/predict", methods=["POST"])
-@required_auth
+@jwt_required()
 def predict():
     try:
         request_input = request.get_json()
-
-        auth_header = request.headers.get("Authorization")
 
         already_predicted = predictions.Prediction.query.filter_by(
             data_id=request_input["datasetId"]
@@ -48,15 +45,6 @@ def predict():
 
         prediction_time = (end_time - start_time).total_seconds()
 
-        if auth_header:
-            token = decodeToken(auth_header)
-            user_id = token.get("user_id")
-            user = users.User.query.get(user_id)
-            if not user:
-                return jsonify({"message": "User not found"}), 404
-        else:
-            return jsonify({"message": "Token is missing"}), 401
-
         class_prediction = classifications.Classification.query.filter_by(
             class_id=int(model_prediction) + 1
         ).first()
@@ -72,7 +60,7 @@ def predict():
         prediction = predictions.Prediction(
             data_id=request_input["datasetId"],
             classification_id=int(model_prediction) + 1,
-            user=user,
+            user=current_user,
         )
 
         data.already_predicted = True
@@ -97,14 +85,15 @@ def predict():
 
 
 @predict_bp.route("/predictions", methods=["GET"])
+@jwt_required()
 def get_predictions():
     try:
         page = request.args.get("page", 1, type=int)
         limit = request.args.get("limit", 10, type=int)
 
-        paginated_predictions = predictions.Prediction.query.order_by(desc(predictions.Prediction.prediction_id)).paginate(
-            page=page, per_page=limit
-        )
+        paginated_predictions = predictions.Prediction.query.order_by(
+            desc(predictions.Prediction.prediction_id)
+        ).paginate(page=page, per_page=limit)
 
         total_items = paginated_predictions.total
 
@@ -117,7 +106,9 @@ def get_predictions():
                 "dataset_id": prediction_item.data_id,
                 "predicted_by": prediction_item.user.username,
                 "email": prediction_item.user.email,
-                "prediction_time": prediction_item.prediction_time.strftime('%Y-%m-%d %H:%M:%S'),
+                "prediction_time": prediction_item.prediction_time.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
             }
             prediction_items.append(prediction_dict)
 
@@ -127,4 +118,7 @@ def get_predictions():
         )
 
     except Exception as e:
-        return jsonify({"message": "Something went wrong when getting the datasets"}), 500
+        return (
+            jsonify({"message": "Something went wrong when getting the datasets"}),
+            500,
+        )

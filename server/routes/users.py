@@ -1,14 +1,21 @@
 import os
-from flask import Blueprint, request, session, url_for, jsonify
-
-from server.middleware.auth import required_auth
+from flask import Blueprint, request, url_for, jsonify
+from server.schema.blocklist import TokenBlocklist
+from server.schema.refresh_token import RefreshToken
 from ..schema.users import User
-from ..utils.tokenUtils import decodeToken
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from ..config import db, mail
-import jwt
 from flask_mail import Message
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    current_user,
+    get_jwt,
+    jwt_required,
+)
 from itsdangerous import URLSafeTimedSerializer
+from flask import current_app
+
 
 user_bp = Blueprint("user", __name__)
 
@@ -18,7 +25,7 @@ user_bp = Blueprint("user", __name__)
 
 
 @user_bp.route("/users", methods=["GET"])
-def get_user():
+def get_users():
     try:
         page = request.args.get("page", 1, type=int)
         item = request.args.get("item", 10, type=int)
@@ -64,7 +71,6 @@ def get_user():
 def register_user():
     try:
         data = request.get_json()
-
 
         user = User.query.filter_by(email=data["email"]).first()
 
@@ -142,62 +148,92 @@ def login_user():
                 400,
             )
 
-        access_token_payload = {
+        user_metadata = {
             "user_id": user.user_id,
             "username": user.username,
             "email": user.email,
             "verified": user.verified,
             "create_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            "exp": datetime.utcnow() + timedelta(hours=1),
-        }
-        refresh_token_payload = {
-            "user_id": user.user_id,
-            "username": user.username,
-            "email": user.email,
-            "create_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-            "verified": user.verified,
         }
 
-        access_token = jwt.encode(
-            access_token_payload, os.getenv("SECRET_KEY"), algorithm="HS256"
+        access_token = create_access_token(identity=user.user_id)
+        refresh_token = create_refresh_token(identity=user.user_id)
+
+        stored_refresh = RefreshToken(
+            token=refresh_token,
+            user=user,
         )
-        refresh_token = jwt.encode(
-            refresh_token_payload, os.getenv("SECRET_KEY"), algorithm="HS256"
-        )
+
+        db.session.add(stored_refresh)
+        db.session.commit()
 
         return (
-            jsonify({"accessToken": access_token, "refreshToken": refresh_token}),
+            jsonify(
+                {
+                    "user": user_metadata,
+                    "accessToken": access_token,
+                }
+            ),
             200,
         )
     except Exception as e:
         print(e)
+        db.session.rollback()
         return jsonify({"message": "Oops! Something went wrong"}), 500
 
 
-@user_bp.route("/refresh_token", methods=["POST"])
-def new_access_token():
-    refresh_token = request.get_json()
+@user_bp.route("/logout", methods=["DELETE"])
+@jwt_required()
+def logout_user():
+    jti = get_jwt()["jti"]
+    sub = get_jwt()["sub"]
+    now = datetime.now(timezone.utc)
+    current_refresh_token = RefreshToken.query.filter_by(
+        user_id=sub, blocklisted=False
+    ).first()
+    current_refresh_token.blocklisted = True
+    db.session.add(TokenBlocklist(jti=jti, created_at=now))
+    db.session.commit()
+    return jsonify(msg="JWT revoked")
 
-    decoded_token = decodeToken(refresh_token["refresh"])
 
-    user_id = decoded_token.get("user_id")
+@user_bp.route("/user", methods=["GET"])
+@jwt_required()
+def user_details():
+    try:
+        return (
+            jsonify(
+                {
+                    "user_id": current_user.user_id,
+                    "username": current_user.username,
+                    "email": current_user.email,
+                    "verified": current_user.verified,
+                    "created_at": current_user.created_at,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        print(e)
+        return jsonify(msg=e.message)
 
-    user = User.query.filter_by(user_id=user_id).first()
+
+@user_bp.route("/<string:user_id>/refresh_token", methods=["GET"])
+def new_access_token(user_id):
+    user = User.query.get_or_404(user_id)
 
     if not user:
         return jsonify({"message": "User not found"}), 404
 
-    access_token_payload = {
-        "user_id": user.user_id,
-        "username": user.username,
-        "email": user.email,
-        "verified": user.verified,
-        "create_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        "exp": datetime.utcnow() + timedelta(hours=1),
-    }
+    refresh_tokens = user.refresh_token
+    access_token = None
 
-    access_token = jwt.encode(
-        access_token_payload, os.getenv("SECRET_KEY"), algorithm="HS256"
-    )
+    for token in refresh_tokens:
+        if not token.blocklisted:
+            access_token = create_access_token(identity=user.user_id)
+            break
 
-    return jsonify({"accessToken": access_token}), 200
+    if access_token:
+        return jsonify({"accessToken": access_token}), 200
+    else:
+        return jsonify({"message": "No valid token found"}), 404
