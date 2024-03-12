@@ -2,32 +2,18 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 from sqlalchemy import desc
 from ..config import db
-from server.middleware.auth import required_auth
-from server.schema import dataset
+from ..middleware.middleware import required_new_student
+from ..schema import dataset
 
 dataset_bp = Blueprint("dataset", __name__)
 
 
-@dataset_bp.route("/dataset/upload", methods=["POST"])
-@required_auth
+@dataset_bp.route("/upload", methods=["POST"])
+@jwt_required()
+@required_new_student
 def upload_data():
     try:
         data = request.get_json()
-
-        current_student_id = dataset.Dataset.query.filter_by(
-            student_id=data["studentId"]
-        ).first()
-
-        if current_student_id is not None:
-            return (
-                jsonify(
-                    {
-                        "title": "Student Id Already Exists!",
-                        "message": "The data you are trying to upload already exists. Please check the student id and try again.",
-                    }
-                ),
-                400,
-            )
 
         data_features = dataset.Dataset()
 
@@ -41,8 +27,8 @@ def upload_data():
         data_features.communication_skills = (data["features"][6],)
         data_features.performance_rating = (data["features"][7],)
 
-        db.session.add(data_features)
-        db.session.commit()
+        # db.session.add(data_features)
+        # db.session.commit()
 
         return (
             jsonify(

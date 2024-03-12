@@ -1,7 +1,7 @@
 import os
 from flask import Blueprint, request, url_for, jsonify
-from server.schema.blocklist import TokenBlocklist
-from server.schema.refresh_token import RefreshToken
+from ..schema.blocklist import TokenBlocklist
+from ..schema.refresh_token import RefreshToken
 from ..schema.users import User
 from datetime import datetime, timezone
 from ..config import db, mail
@@ -215,11 +215,12 @@ def user_details():
         )
     except Exception as e:
         print(e)
-        return jsonify(msg=e.message)
+        return jsonify(message="Error")
 
 
 @user_bp.route("/<string:user_id>/refresh_token", methods=["GET"])
 def new_access_token(user_id):
+
     user = User.query.get_or_404(user_id)
 
     if not user:
